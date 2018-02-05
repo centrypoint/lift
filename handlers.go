@@ -2,26 +2,36 @@ package lift
 
 import (
 	"net/http"
-	"net/url"
 	"time"
+	"net/url"
 	"log"
-	"encoding/json"
 	"errors"
+	"encoding/json"
 )
 
 type Instance instance
 
 type Route route
 
+type Params struct {
+	QueryParams map[string]string
+}
+
+func (p Params) New() Params {
+	return Params{
+		QueryParams: make(map[string]string),
+	}
+}
+
 type instance struct {
 	routes map[string]Route
 }
 
 type route struct {
-	Path        string
-	Method      string
-	QueryParams []string
-	Resolver    func(params ...interface{}) (status int, response interface{}, err error)
+	Path     string
+	Method   string
+	Params   Params
+	Resolver func(params Params) (status int, response interface{}, err error)
 }
 
 func New() Instance {
@@ -36,9 +46,9 @@ func (ro *Route) prepare() http.Handler {
 			res      []byte
 		)
 
+		params := Params.New(Params{})
 		responseStatus := 500
 		start := time.Now()
-		params := []interface{}{}
 
 		defer func(writer *http.ResponseWriter, method string, url *url.URL, s *time.Time, status *int) {
 			if (*status) != 200 {
@@ -47,7 +57,8 @@ func (ro *Route) prepare() http.Handler {
 		}(&rw, r.Method, r.URL, &start, &responseStatus)
 
 		defer func(e *error) {
-			if _e := recover(); _e != nil {
+			if _e := recover();
+				_e != nil {
 				log.Println(_e)
 			}
 			if (*e) != nil {
@@ -62,14 +73,14 @@ func (ro *Route) prepare() http.Handler {
 			return
 		}
 
-		if len(ro.QueryParams) > 0 {
-			for _, v := range ro.QueryParams {
+		if len(ro.Params.QueryParams) > 0 {
+			for v := range ro.Params.QueryParams {
 				value := r.URL.Query().Get(v)
 				if len(value) < 1 {
 					err = errors.New("not enough query params")
 					return
 				}
-				params = append(params, value)
+				params.QueryParams[v] = value
 			}
 		}
 
@@ -84,7 +95,8 @@ func (ro *Route) prepare() http.Handler {
 			return
 		}
 
-		if res, err = json.Marshal(response); err != nil {
+		if res, err = json.Marshal(response);
+			err != nil {
 			responseStatus = 500
 			return
 		}
